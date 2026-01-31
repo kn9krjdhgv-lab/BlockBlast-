@@ -1,0 +1,1190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Block Blast+</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+
+<!-- iOS PWA meta -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Block Blast+">
+
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-512.png">
+
+<style>
+  :root {
+    --bg: #0b0b18;
+    --panel-bg: #151528;
+    --board-bg: #181830;
+    --cell-empty: #22223b;
+    --cell-border: #2e2e4a;
+    --ghost-valid: rgba(0, 255, 127, 0.35);
+    --ghost-invalid: rgba(255, 69, 58, 0.35);
+    --accent: #ffcc33;
+    --accent-soft: #ffb347;
+    --text-main: #f5f5ff;
+    --text-muted: #a0a0c0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: radial-gradient(circle at top, #26264a 0, #050510 55%);
+    color: var(--text-main);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    min-height: 100vh;
+    overflow-y: auto;
+  }
+  h1 { margin: 16px 0 4px; font-size: 26px; letter-spacing: 1px; text-shadow: 0 0 12px rgba(0,0,0,0.7); }
+  #score, #highScore { font-size: 18px; }
+  #score { margin-bottom: 2px; }
+  #highScore { margin-bottom: 8px; color: var(--accent-soft); }
+  #status { margin-top: 4px; min-height: 20px; font-size: 14px; color: var(--text-muted); }
+  #game {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    margin-top: 8px;
+    padding: 0 8px 16px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  #board {
+    display: grid;
+    grid-template-columns: repeat(9, 36px);
+    grid-template-rows: repeat(9, 36px);
+    gap: 3px;
+    background: var(--board-bg);
+    padding: 10px;
+    border-radius: 18px;
+    box-shadow: 0 0 25px rgba(0,0,0,0.6), 0 0 40px rgba(0,0,0,0.8);
+    border: 1px solid #2a2a4a;
+  }
+  .cell {
+    width: 36px;
+    height: 36px;
+    background: var(--cell-empty);
+    border-radius: 10px;
+    border: 1px solid var(--cell-border);
+    transition: background 0.08s, transform 0.05s, box-shadow 0.08s;
+    position: relative;
+    overflow: hidden;
+  }
+  .cell.filled { background: linear-gradient(145deg, #ffb347, #ffcc33); box-shadow: 0 0 10px rgba(255, 204, 51, 0.6); }
+  .cell.filled.color-0 { background: linear-gradient(145deg, #ffb347, #ffcc33); }
+  .cell.filled.color-1 { background: linear-gradient(145deg, #4facfe, #00f2fe); }
+  .cell.filled.color-2 { background: linear-gradient(145deg, #ff6a88, #ff99ac); }
+  .cell.filled.color-3 { background: linear-gradient(145deg, #43e97b, #38f9d7); }
+  .cell.filled.color-4 { background: linear-gradient(145deg, #a18cd1, #fbc2eb); }
+  .cell.filled.color-5 { background: linear-gradient(145deg, #f7971e, #ffd200); }
+  .cell.ghost-valid { background: var(--ghost-valid); box-shadow: 0 0 12px rgba(0, 255, 127, 0.7); }
+  .cell.ghost-invalid { background: var(--ghost-invalid); box-shadow: 0 0 12px rgba(255, 69, 58, 0.7); }
+
+  #pieces { display: flex; flex-direction: column; gap: 12px; max-height: 80vh; overflow-y: auto; }
+  .piece-container { display: flex; flex-direction: column; gap: 12px; }
+  .piece {
+    display: inline-grid;
+    gap: 3px;
+    padding: 8px;
+    background: var(--panel-bg);
+    border-radius: 14px;
+    cursor: pointer;
+    box-shadow: 0 0 14px rgba(0,0,0,0.5);
+    border: 2px solid transparent;
+    transition: transform 0.1s, border-color 0.1s, box-shadow 0.1s;
+    position: relative;
+  }
+  .piece.selected { border-color: var(--accent); box-shadow: 0 0 18px rgba(255, 204, 51, 0.7); transform: translateY(-2px); }
+  .piece.dragging { opacity: 0.7; transform: scale(1.05); }
+  .piece-cell {
+    width: 18px;
+    height: 18px;
+    border-radius: 6px;
+    background: linear-gradient(145deg, #ffb347, #ffcc33);
+    box-shadow: 0 0 6px rgba(0,0,0,0.5);
+  }
+  .piece-cell.color-0 { background: linear-gradient(145deg, #ffb347, #ffcc33); }
+  .piece-cell.color-1 { background: linear-gradient(145deg, #4facfe, #00f2fe); }
+  .piece-cell.color-2 { background: linear-gradient(145deg, #ff6a88, #ff99ac); }
+  .piece-cell.color-3 { background: linear-gradient(145deg, #43e97b, #38f9d7); }
+  .piece-cell.color-4 { background: linear-gradient(145deg, #a18cd1, #fbc2eb); }
+  .piece-cell.color-5 { background: linear-gradient(145deg, #f7971e, #ffd200); }
+
+  #controls { margin-top: 12px; text-align: center; }
+  button {
+    padding: 8px 16px;
+    border-radius: 999px;
+    border: none;
+    background: var(--accent-soft);
+    color: #101018;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+    transition: transform 0.05s, box-shadow 0.05s, background 0.1s;
+    font-size: 14px;
+  }
+  button:hover { background: var(--accent); }
+  button:active { transform: translateY(1px); box-shadow: 0 2px 6px rgba(0,0,0,0.4); }
+  #settingsBtn { margin-left: 8px; }
+  #hint { margin-top: 6px; font-size: 12px; color: var(--text-muted); }
+
+  /* Cheat panel */
+  #cheatPanel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 340px;
+    max-width: 90vw;
+    height: 100vh;
+    background: rgba(10, 10, 25, 0.96);
+    border-left: 1px solid #303050;
+    box-shadow: -4px 0 18px rgba(0,0,0,0.7);
+    transform: translateX(100%);
+    transition: transform 0.25s ease-out;
+    padding: 12px 14px;
+    color: var(--text-main);
+    font-size: 13px;
+    z-index: 999;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  #cheatPanel.open { transform: translateX(0); }
+  #cheatHeader { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  #cheatHeader h2 { font-size: 16px; margin: 0; }
+  #cheatClose {
+    background: transparent;
+    color: var(--text-main);
+    border-radius: 999px;
+    padding: 4px 10px;
+    border: 1px solid #44446a;
+    font-size: 11px;
+    box-shadow: none;
+  }
+  #cheatClose:hover { background: #303050; }
+  .cheat-section {
+    background: #151528;
+    border-radius: 10px;
+    padding: 8px;
+    border: 1px solid #2a2a4a;
+  }
+  .cheat-section h3 { margin: 0 0 4px; font-size: 13px; color: var(--accent-soft); }
+  .cheat-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+  .cheat-row label { flex: 0 0 80px; }
+  .cheat-row input {
+    flex: 1;
+    padding: 3px 6px;
+    border-radius: 6px;
+    border: 1px solid #3a3a5a;
+    background: #101020;
+    color: var(--text-main);
+    font-size: 12px;
+  }
+  .cheat-row button { padding: 4px 8px; font-size: 11px; box-shadow: none; }
+  .cheat-toggle { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+  .cheat-toggle label { font-size: 12px; }
+  .cheat-toggle input[type="checkbox"] { transform: scale(1.1); }
+  #cheatHint { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+  #customBuilder {
+    margin-top: 6px;
+    background: #151528;
+    border-radius: 10px;
+    padding: 8px;
+    border: 1px solid #2a2a4a;
+  }
+  #customBuilder h3 { margin: 0 0 6px; font-size: 13px; color: var(--accent-soft); }
+  #customGrid {
+    display: grid;
+    grid-template-columns: repeat(4, 18px);
+    grid-template-rows: repeat(4, 18px);
+    gap: 3px;
+    margin-bottom: 6px;
+  }
+  .custom-cell {
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    background: #101020;
+    border: 1px solid #303050;
+    cursor: pointer;
+  }
+  .custom-cell.active { background: #ffcc33; box-shadow: 0 0 6px rgba(255, 204, 51, 0.7); }
+  #customInfo { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+  /* Settings modal */
+  #settingsModalBackdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 900;
+  }
+  #settingsModalBackdrop.open { display: flex; }
+  #settingsModal {
+    background: #151528;
+    border-radius: 16px;
+    padding: 16px;
+    width: 320px;
+    max-width: 90vw;
+    border: 1px solid #2a2a4a;
+    box-shadow: 0 0 24px rgba(0,0,0,0.7);
+  }
+  #settingsModal h2 { margin: 0 0 8px; font-size: 18px; }
+  .settings-row { margin-bottom: 10px; font-size: 13px; }
+  .settings-row label { display: inline-block; margin-bottom: 4px; }
+  #settingsCloseBtn { margin-top: 8px; float: right; padding: 6px 12px; font-size: 12px; }
+  #volumeSlider { width: 100%; }
+
+  /* Unlock modal */
+  #unlockModalBackdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 950;
+  }
+  #unlockModalBackdrop.open { display: flex; }
+  #unlockModal {
+    background: #151528;
+    border-radius: 16px;
+    padding: 16px;
+    width: 300px;
+    max-width: 90vw;
+    border: 1px solid #2a2a4a;
+    box-shadow: 0 0 24px rgba(0,0,0,0.7);
+    font-size: 13px;
+  }
+  #unlockModal h3 { margin: 0 0 8px; font-size: 16px; }
+  #unlockModal input {
+    width: 100%;
+    margin-bottom: 6px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    border: 1px solid #3a3a5a;
+    background: #101020;
+    color: var(--text-main);
+  }
+  #unlockError { color: #ff6a88; font-size: 12px; min-height: 16px; }
+  #unlockButtons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+</style>
+</head>
+<body>
+<h1>Block Blast+</h1>
+<div id="score">Score: 0</div>
+<div id="highScore">High score: 0</div>
+<div id="status"></div>
+
+<div id="game">
+  <div id="board"></div>
+  <div id="pieces">
+    <div class="piece-container" id="pieceContainer"></div>
+  </div>
+</div>
+
+<div id="controls">
+  <button id="newGameBtn">New Game</button>
+  <button id="settingsBtn">Settings</button>
+  <div id="hint">Tap pieces, drag, or use arrows + Enter. Konami code or unlock in Settings for dev tools.</div>
+</div>
+
+<!-- Cheat Panel -->
+<div id="cheatPanel">
+  <div id="cheatHeader">
+    <h2>Dev Console</h2>
+    <button id="cheatClose">Close</button>
+  </div>
+
+  <div class="cheat-section">
+    <h3>Score</h3>
+    <div class="cheat-row">
+      <label for="cheatScore">Set score</label>
+      <input id="cheatScore" type="number" placeholder="e.g. 5000">
+      <button id="cheatSetScoreBtn">Set</button>
+    </div>
+    <div class="cheat-row">
+      <label for="cheatMultiplier">Multiplier</label>
+      <input id="cheatMultiplier" type="number" min="1" max="10" value="1">
+      <button id="cheatApplyMultiplierBtn">Apply</button>
+    </div>
+    <div class="cheat-row">
+      <button id="cheatAdd100">+100</button>
+      <button id="cheatAdd1000">+1000</button>
+      <button id="cheatAdd10000">+10000</button>
+    </div>
+  </div>
+
+  <div class="cheat-section">
+    <h3>Pieces</h3>
+    <div class="cheat-row">
+      <label for="cheatPieces">Next pieces</label>
+      <input id="cheatPieces" type="text" placeholder="shape IDs, e.g. 0,3,5">
+      <button id="cheatSetPiecesBtn">Set</button>
+    </div>
+    <div class="cheat-row">
+      <button id="cheatRandomPiecesBtn">Randomize</button>
+      <button id="cheatSmallPiecesBtn">Small</button>
+      <button id="cheatLargePiecesBtn">Large</button>
+    </div>
+
+    <div id="customBuilder">
+      <h3>Custom block (4×4)</h3>
+      <div id="customGrid"></div>
+      <button id="addCustomBlockBtn">Add custom block</button>
+      <div id="customInfo">
+        Click cells to toggle. New shape gets the next ID and appears in the reference page and cheats.
+      </div>
+    </div>
+  </div>
+
+  <div class="cheat-section">
+    <h3>Board</h3>
+    <div class="cheat-row">
+      <button id="cheatClearBoardBtn">Clear board</button>
+      <button id="cheatFillBoardBtn">Fill board</button>
+    </div>
+  </div>
+
+  <div class="cheat-section">
+    <h3>Gameplay</h3>
+    <div class="cheat-toggle">
+      <label for="cheatAlwaysValid">Always valid placement</label>
+      <input id="cheatAlwaysValid" type="checkbox">
+    </div>
+    <div class="cheat-toggle">
+      <label for="cheatNoGameOver">Disable game over</label>
+      <input id="cheatNoGameOver" type="checkbox">
+    </div>
+  </div>
+
+  <div id="cheatHint">
+    Konami code: ↑ ↑ ↓ ↓ ← → ← → B A  
+    Or unlock via Settings → Unlock All Features.
+  </div>
+</div>
+
+<!-- Settings Modal -->
+<div id="settingsModalBackdrop">
+  <div id="settingsModal">
+    <h2>Settings</h2>
+
+    <div class="settings-row">
+      <label>
+        <input type="checkbox" id="musicToggle">
+        Music on
+      </label>
+    </div>
+
+    <div class="settings-row">
+      <label for="volumeSlider">Volume</label>
+      <input type="range" id="volumeSlider" min="0" max="100" value="60">
+    </div>
+
+    <div class="settings-row">
+      <button id="openReferenceBtn">Open Block Reference Page</button>
+    </div>
+
+    <div class="settings-row">
+      <button id="unlockFeaturesBtn">Unlock All Features</button>
+    </div>
+
+    <button id="settingsCloseBtn">Close</button>
+  </div>
+</div>
+
+<!-- Unlock Modal -->
+<div id="unlockModalBackdrop">
+  <div id="unlockModal">
+    <h3>Unlock All Features</h3>
+    <p>Enter password and PIN to unlock developer tools.</p>
+    <input type="password" id="unlockPassword" placeholder="Password">
+    <input type="password" id="unlockPin" placeholder="PIN">
+    <div id="unlockError"></div>
+    <div id="unlockButtons">
+      <button id="unlockCancelBtn">Cancel</button>
+      <button id="unlockConfirmBtn">Unlock</button>
+    </div>
+  </div>
+</div>
+
+<audio id="bgMusic" loop></audio>
+
+<script>
+  const BOARD_SIZE = 9;
+
+  let PIECE_SHAPES = [
+    [[0,0]],
+    [[0,0],[0,1]],
+    [[0,0],[1,0]],
+    [[0,0],[0,1],[0,2]],
+    [[0,0],[1,0],[2,0]],
+    [[0,0],[0,1],[0,2],[0,3]],
+    [[0,0],[1,0],[2,0],[3,0]],
+    [[0,0],[0,1],[0,2],[0,3],[0,4]],
+    [[0,0],[1,0],[2,0],[3,0],[4,0]],
+    [[0,0],[0,1],[1,0],[1,1]],
+    [[0,0],[0,1],[0,2],[1,0],[1,1],[1,2],[2,0],[2,1],[2,2]],
+    [[0,0],[1,0],[2,0],[2,1]],
+    [[0,1],[1,1],[2,1],[2,0]],
+    [[0,0],[0,1],[0,2],[1,0]],
+    [[0,0],[0,1],[0,2],[1,2]],
+    [[0,0],[0,1],[0,2],[1,1]],
+    [[0,1],[1,0],[1,1],[2,1]],
+    [[1,0],[1,1],[1,2],[0,1],[2,1]]
+  ];
+
+  const COLOR_COUNT = 6;
+
+  let board = [];
+  let pieces = [];
+  let selectedPieceIndex = null;
+  let draggingPieceIndex = null;
+  let lastHoverRow = null;
+  let lastHoverCol = null;
+
+  let score = 0;
+  let highScore = 0;
+  let scoreMultiplier = 1;
+
+  let ghostBaseRow = null;
+  let ghostBaseCol = null;
+  let ghostFromKeyboard = false;
+
+  let alwaysValidPlacement = false;
+  let disableGameOver = false;
+
+  const boardEl = document.getElementById('board');
+  const pieceContainerEl = document.getElementById('pieceContainer');
+  const scoreEl = document.getElementById('score');
+  const highScoreEl = document.getElementById('highScore');
+  const statusEl = document.getElementById('status');
+  const newGameBtn = document.getElementById('newGameBtn');
+  const settingsBtn = document.getElementById('settingsBtn');
+
+  const cheatPanel = document.getElementById('cheatPanel');
+  const cheatCloseBtn = document.getElementById('cheatClose');
+
+  const cheatScoreInput = document.getElementById('cheatScore');
+  const cheatSetScoreBtn = document.getElementById('cheatSetScoreBtn');
+  const cheatMultiplierInput = document.getElementById('cheatMultiplier');
+  const cheatApplyMultiplierBtn = document.getElementById('cheatApplyMultiplierBtn');
+  const cheatAdd100 = document.getElementById('cheatAdd100');
+  const cheatAdd1000 = document.getElementById('cheatAdd1000');
+  const cheatAdd10000 = document.getElementById('cheatAdd10000');
+
+  const cheatPiecesInput = document.getElementById('cheatPieces');
+  const cheatSetPiecesBtn = document.getElementById('cheatSetPiecesBtn');
+  const cheatRandomPiecesBtn = document.getElementById('cheatRandomPiecesBtn');
+  const cheatSmallPiecesBtn = document.getElementById('cheatSmallPiecesBtn');
+  const cheatLargePiecesBtn = document.getElementById('cheatLargePiecesBtn');
+
+  const cheatClearBoardBtn = document.getElementById('cheatClearBoardBtn');
+  const cheatFillBoardBtn = document.getElementById('cheatFillBoardBtn');
+
+  const cheatAlwaysValid = document.getElementById('cheatAlwaysValid');
+  const cheatNoGameOver = document.getElementById('cheatNoGameOver');
+
+  const customGridEl = document.getElementById('customGrid');
+  const addCustomBlockBtn = document.getElementById('addCustomBlockBtn');
+
+  const settingsModalBackdrop = document.getElementById('settingsModalBackdrop');
+  const settingsCloseBtn = document.getElementById('settingsCloseBtn');
+  const musicToggle = document.getElementById('musicToggle');
+  const volumeSlider = document.getElementById('volumeSlider');
+  const openReferenceBtn = document.getElementById('openReferenceBtn');
+  const bgMusic = document.getElementById('bgMusic');
+
+  const unlockModalBackdrop = document.getElementById('unlockModalBackdrop');
+  const unlockPasswordInput = document.getElementById('unlockPassword');
+  const unlockPinInput = document.getElementById('unlockPin');
+  const unlockErrorEl = document.getElementById('unlockError');
+  const unlockCancelBtn = document.getElementById('unlockCancelBtn');
+  const unlockConfirmBtn = document.getElementById('unlockConfirmBtn');
+  const unlockFeaturesBtn = document.getElementById('unlockFeaturesBtn');
+
+  const KONAMI = [
+    'ArrowUp','ArrowUp','ArrowDown','ArrowDown',
+    'ArrowLeft','ArrowRight','ArrowLeft','ArrowRight',
+    'b','a'
+  ];
+  let konamiIndex = 0;
+
+  const UNLOCK_PASSWORD = 'DevAcc3ss15';
+  const UNLOCK_PIN = '1375829361';
+
+  function loadHighScore() {
+    const stored = localStorage.getItem('bb_highscore');
+    if (stored) {
+      const val = parseInt(stored, 10);
+      if (!isNaN(val)) highScore = val;
+    }
+    highScoreEl.textContent = `High score: ${highScore}`;
+  }
+
+  function saveHighScore() {
+    localStorage.setItem('bb_highscore', String(highScore));
+  }
+
+  function updateScoreDisplay() {
+    scoreEl.textContent = `Score: ${score}`;
+    if (score > highScore) {
+      highScore = score;
+      highScoreEl.textContent = `High score: ${highScore}`;
+      saveHighScore();
+    }
+  }
+
+  function initBoard() {
+    board = Array.from({ length: BOARD_SIZE }, () =>
+      Array.from({ length: BOARD_SIZE }, () => 0)
+    );
+    boardEl.innerHTML = '';
+    for (let r = 0; r < BOARD_SIZE; r++) {
+      for (let c = 0; c < BOARD_SIZE; c++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.dataset.row = r;
+        cell.dataset.col = c;
+        cell.addEventListener('mouseenter', handleCellHover);
+        cell.addEventListener('mouseleave', handleCellLeave);
+        cell.addEventListener('click', handleCellClick);
+        cell.addEventListener('mouseup', handleCellMouseUp);
+        boardEl.appendChild(cell);
+      }
+    }
+    renderBoard();
+  }
+
+  function renderBoard() {
+    const cells = boardEl.children;
+    for (let i = 0; i < cells.length; i++) {
+      const cell = cells[i];
+      const r = parseInt(cell.dataset.row, 10);
+      const c = parseInt(cell.dataset.col, 10);
+      const val = board[r][c];
+      cell.className = 'cell';
+      if (val > 0) {
+        cell.classList.add('filled', `color-${(val-1) % COLOR_COUNT}`);
+      }
+    }
+  }
+
+  function randomPiece() {
+    const shape = PIECE_SHAPES[Math.floor(Math.random() * PIECE_SHAPES.length)];
+    const colorIndex = Math.floor(Math.random() * COLOR_COUNT);
+    return { shape, colorIndex };
+  }
+
+  function generatePieces() {
+    pieces = [randomPiece(), randomPiece(), randomPiece()];
+    selectedPieceIndex = null;
+    draggingPieceIndex = null;
+    ghostBaseRow = null;
+    ghostBaseCol = null;
+    ghostFromKeyboard = false;
+    renderPieces();
+    clearGhost();
+  }
+
+  function renderPieces() {
+    pieceContainerEl.innerHTML = '';
+    pieces.forEach((piece, index) => {
+      if (!piece) return;
+      const { shape, colorIndex } = piece;
+      const rows = shape.map(p => p[0]);
+      const cols = shape.map(p => p[1]);
+      const height = Math.max(...rows) + 1;
+      const width = Math.max(...cols) + 1;
+
+      const pieceEl = document.createElement('div');
+      pieceEl.className = 'piece';
+      if (index === selectedPieceIndex) pieceEl.classList.add('selected');
+      pieceEl.style.gridTemplateRows = `repeat(${height}, 18px)`;
+      pieceEl.style.gridTemplateColumns = `repeat(${width}, 18px)`;
+      pieceEl.dataset.index = index;
+
+      const grid = Array.from({ length: height }, () =>
+        Array.from({ length: width }, () => 0)
+      );
+      shape.forEach(([r, c]) => { grid[r][c] = 1; });
+
+      for (let r = 0; r < height; r++) {
+        for (let c = 0; c < width; c++) {
+          const cell = document.createElement('div');
+          if (grid[r][c] === 1) {
+            cell.className = 'piece-cell';
+            cell.classList.add(`color-${colorIndex}`);
+          } else {
+            cell.style.width = '18px';
+            cell.style.height = '18px';
+          }
+          pieceEl.appendChild(cell);
+        }
+      }
+
+      pieceEl.addEventListener('click', (e) => {
+        if (draggingPieceIndex !== null) return;
+        e.stopPropagation();
+        if (!pieces[index]) return;
+        if (selectedPieceIndex === index) {
+          selectedPieceIndex = null;
+          ghostBaseRow = null;
+          ghostBaseCol = null;
+          ghostFromKeyboard = false;
+          clearGhost();
+        } else {
+          selectedPieceIndex = index;
+          const { shape } = pieces[index];
+          const rows = shape.map(p => p[0]);
+          const cols = shape.map(p => p[1]);
+          const height = Math.max(...rows) + 1;
+          const width = Math.max(...cols) + 1;
+          ghostBaseRow = Math.floor((BOARD_SIZE - height) / 2);
+          ghostBaseCol = Math.floor((BOARD_SIZE - width) / 2);
+          ghostFromKeyboard = true;
+          showGhost(pieces[index], ghostBaseRow, ghostBaseCol);
+        }
+        renderPieces();
+      });
+
+      pieceEl.addEventListener('mousedown', (e) => {
+        if (!pieces[index]) return;
+        draggingPieceIndex = index;
+        selectedPieceIndex = index;
+        pieceEl.classList.add('dragging');
+        ghostFromKeyboard = false;
+        document.addEventListener('mouseup', handleGlobalMouseUp);
+      });
+
+      pieceContainerEl.appendChild(pieceEl);
+    });
+  }
+
+  function canPlace(piece, baseRow, baseCol) {
+    if (!piece) return false;
+    const { shape } = piece;
+    for (const [dr, dc] of shape) {
+      const r = baseRow + dr;
+      const c = baseCol + dc;
+      if (r < 0 || r >= BOARD_SIZE || c < 0 || c >= BOARD_SIZE) return false;
+      if (board[r][c] !== 0) return false;
+    }
+    return true;
+  }
+
+  function placePiece(pieceIndex, baseRow, baseCol) {
+    const piece = pieces[pieceIndex];
+    if (!piece) return;
+    const { shape, colorIndex } = piece;
+    shape.forEach(([dr, dc]) => {
+      const r = baseRow + dr;
+      const c = baseCol + dc;
+      board[r][c] = colorIndex + 1;
+    });
+    renderBoard();
+    const cleared = clearLines();
+    const placedBlocks = shape.length;
+    const gained = (placedBlocks + cleared * 10) * scoreMultiplier;
+    score += gained;
+    updateScoreDisplay();
+    pieces[pieceIndex] = null;
+    selectedPieceIndex = null;
+    draggingPieceIndex = null;
+    ghostBaseRow = null;
+    ghostBaseCol = null;
+    ghostFromKeyboard = false;
+    renderPieces();
+    clearGhost();
+    statusEl.textContent = '';
+    if (pieces.every(p => p === null)) generatePieces();
+    if (!disableGameOver && isGameOver()) statusEl.textContent = 'No more moves. Game over.';
+  }
+
+  function clearLines() {
+    let cleared = 0;
+    for (let r = 0; r < BOARD_SIZE; r++) {
+      if (board[r].every(v => v !== 0)) {
+        for (let c = 0; c < BOARD_SIZE; c++) board[r][c] = 0;
+        cleared++;
+      }
+    }
+    for (let c = 0; c < BOARD_SIZE; c++) {
+      let full = true;
+      for (let r = 0; r < BOARD_SIZE; r++) {
+        if (board[r][c] === 0) { full = false; break; }
+      }
+      if (full) {
+        for (let r = 0; r < BOARD_SIZE; r++) board[r][c] = 0;
+        cleared++;
+      }
+    }
+    renderBoard();
+    return cleared;
+  }
+
+  function getCell(r, c) {
+    return boardEl.querySelector(\`.cell[data-row="\${r}"][data-col="\${c}"]\`);
+  }
+
+  function clearGhost() {
+    const cells = boardEl.children;
+    for (let i = 0; i < cells.length; i++) {
+      cells[i].classList.remove('ghost-valid', 'ghost-invalid');
+    }
+  }
+
+  function showGhost(piece, baseRow, baseCol) {
+    clearGhost();
+    if (!piece) return;
+    const valid = alwaysValidPlacement || canPlace(piece, baseRow, baseCol);
+    const { shape } = piece;
+    shape.forEach(([dr, dc]) => {
+      const r = baseRow + dr;
+      const c = baseCol + dc;
+      if (r < 0 || r >= BOARD_SIZE || c < 0 || c >= BOARD_SIZE) return;
+      const cell = getCell(r, c);
+      if (!cell) return;
+      cell.classList.add(valid ? 'ghost-valid' : 'ghost-invalid');
+    });
+  }
+
+  function handleCellHover(e) {
+    const r = parseInt(e.target.dataset.row, 10);
+    const c = parseInt(e.target.dataset.col, 10);
+    lastHoverRow = r;
+    lastHoverCol = c;
+    if (selectedPieceIndex === null) return;
+    if (ghostFromKeyboard && draggingPieceIndex === null) return;
+    showGhost(pieces[selectedPieceIndex], r, c);
+  }
+
+  function handleCellLeave() {
+    if (ghostFromKeyboard) return;
+    if (draggingPieceIndex !== null) return;
+    clearGhost();
+  }
+
+  function handleCellClick(e) {
+    if (selectedPieceIndex === null) return;
+    const piece = pieces[selectedPieceIndex];
+    if (!piece) return;
+    const baseRow = parseInt(e.target.dataset.row, 10);
+    const baseCol = parseInt(e.target.dataset.col, 10);
+    const valid = alwaysValidPlacement || canPlace(piece, baseRow, baseCol);
+    if (valid) placePiece(selectedPieceIndex, baseRow, baseCol);
+    else statusEl.textContent = 'Invalid placement.';
+  }
+
+  function handleCellMouseUp(e) {
+    if (draggingPieceIndex === null) return;
+    const pieceIndex = draggingPieceIndex;
+    const piece = pieces[pieceIndex];
+    if (!piece) return;
+    const baseRow = parseInt(e.target.dataset.row, 10);
+    const baseCol = parseInt(e.target.dataset.col, 10);
+    const valid = alwaysValidPlacement || canPlace(piece, baseRow, baseCol);
+    if (valid) placePiece(pieceIndex, baseRow, baseCol);
+    else {
+      statusEl.textContent = 'Invalid placement.';
+      draggingPieceIndex = null;
+      clearGhost();
+      renderPieces();
+    }
+  }
+
+  function handleGlobalMouseUp() {
+    draggingPieceIndex = null;
+    const pieceEls = document.querySelectorAll('.piece.dragging');
+    pieceEls.forEach(el => el.classList.remove('dragging'));
+    document.removeEventListener('mouseup', handleGlobalMouseUp);
+  }
+
+  function isGameOver() {
+    for (let i = 0; i < pieces.length; i++) {
+      const piece = pieces[i];
+      if (!piece) continue;
+      for (let r = 0; r < BOARD_SIZE; r++) {
+        for (let c = 0; c < BOARD_SIZE; c++) {
+          if (canPlace(piece, r, c)) return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  function newGame() {
+    score = 0;
+    scoreMultiplier = 1;
+    updateScoreDisplay();
+    statusEl.textContent = '';
+    initBoard();
+    generatePieces();
+  }
+
+  newGameBtn.addEventListener('click', newGame);
+
+  document.addEventListener('keydown', (e) => {
+    handleKonami(e);
+
+    if (selectedPieceIndex === null) return;
+    const piece = pieces[selectedPieceIndex];
+    if (!piece) return;
+
+    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter','Escape'].includes(e.key)) {
+      e.preventDefault();
+    }
+
+    if (e.key === 'Escape') {
+      selectedPieceIndex = null;
+      ghostBaseRow = null;
+      ghostBaseCol = null;
+      ghostFromKeyboard = false;
+      clearGhost();
+      renderPieces();
+      return;
+    }
+
+    if (e.key === 'Enter') {
+      if (ghostBaseRow === null || ghostBaseCol === null) return;
+      const valid = alwaysValidPlacement || canPlace(piece, ghostBaseRow, ghostBaseCol);
+      if (valid) placePiece(selectedPieceIndex, ghostBaseRow, ghostBaseCol);
+      else statusEl.textContent = 'Invalid placement.';
+      return;
+    }
+
+    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) {
+      ghostFromKeyboard = true;
+      if (ghostBaseRow === null || ghostBaseCol === null) {
+        const rows = piece.shape.map(p => p[0]);
+        const cols = piece.shape.map(p => p[1]);
+        const height = Math.max(...rows) + 1;
+        const width = Math.max(...cols) + 1;
+        ghostBaseRow = Math.floor((BOARD_SIZE - height) / 2);
+        ghostBaseCol = Math.floor((BOARD_SIZE - width) / 2);
+      }
+      if (e.key === 'ArrowUp') ghostBaseRow = Math.max(0, ghostBaseRow - 1);
+      if (e.key === 'ArrowDown') ghostBaseRow = Math.min(BOARD_SIZE - 1, ghostBaseRow + 1);
+      if (e.key === 'ArrowLeft') ghostBaseCol = Math.max(0, ghostBaseCol - 1);
+      if (e.key === 'ArrowRight') ghostBaseCol = Math.min(BOARD_SIZE - 1, ghostBaseCol + 1);
+      showGhost(piece, ghostBaseRow, ghostBaseCol);
+    }
+  });
+
+  function handleKonami(e) {
+    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    const expected = KONAMI[konamiIndex];
+    if (key === expected) {
+      konamiIndex++;
+      if (konamiIndex === KONAMI.length) {
+        konamiIndex = 0;
+        openCheatPanel();
+      }
+    } else {
+      konamiIndex = 0;
+    }
+  }
+
+  function openCheatPanel() {
+    cheatPanel.classList.add('open');
+  }
+  function closeCheatPanel() {
+    cheatPanel.classList.remove('open');
+  }
+
+  cheatCloseBtn.addEventListener('click', closeCheatPanel);
+
+  // Cheats
+  cheatSetScoreBtn.addEventListener('click', () => {
+    const val = parseInt(cheatScoreInput.value, 10);
+    if (!isNaN(val)) {
+      score = val;
+      updateScoreDisplay();
+    }
+  });
+
+  cheatApplyMultiplierBtn.addEventListener('click', () => {
+    const val = parseInt(cheatMultiplierInput.value, 10);
+    if (!isNaN(val) && val >= 1 && val <= 10) scoreMultiplier = val;
+  });
+
+  cheatAdd100.addEventListener('click', () => { score += 100; updateScoreDisplay(); });
+  cheatAdd1000.addEventListener('click', () => { score += 1000; updateScoreDisplay(); });
+  cheatAdd10000.addEventListener('click', () => { score += 10000; updateScoreDisplay(); });
+
+  cheatSetPiecesBtn.addEventListener('click', () => {
+    const text = cheatPiecesInput.value.trim();
+    if (!text) return;
+    const parts = text.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
+    if (parts.length === 0) return;
+    pieces = [null, null, null];
+    for (let i = 0; i < Math.min(3, parts.length); i++) {
+      const idx = parts[i];
+      if (idx >= 0 && idx < PIECE_SHAPES.length) {
+        pieces[i] = {
+          shape: PIECE_SHAPES[idx],
+          colorIndex: Math.floor(Math.random() * COLOR_COUNT)
+        };
+      }
+    }
+    selectedPieceIndex = null;
+    draggingPieceIndex = null;
+    ghostBaseRow = null;
+    ghostBaseCol = null;
+    ghostFromKeyboard = false;
+    renderPieces();
+    clearGhost();
+  });
+
+  cheatRandomPiecesBtn.addEventListener('click', () => {
+    generatePieces();
+  });
+
+  cheatSmallPiecesBtn.addEventListener('click', () => {
+    const small = PIECE_SHAPES.map((shape, idx) => ({ shape, idx })).filter(s => s.shape.length <= 3);
+    pieces = [];
+    for (let i = 0; i < 3; i++) {
+      const pick = small[Math.floor(Math.random() * small.length)];
+      pieces.push({ shape: pick.shape, colorIndex: Math.floor(Math.random() * COLOR_COUNT) });
+    }
+    selectedPieceIndex = null;
+    renderPieces();
+    clearGhost();
+  });
+
+  cheatLargePiecesBtn.addEventListener('click', () => {
+    const large = PIECE_SHAPES.map((shape, idx) => ({ shape, idx })).filter(s => s.shape.length >= 5);
+    pieces = [];
+    for (let i = 0; i < 3; i++) {
+      const pick = large[Math.floor(Math.random() * large.length)];
+      pieces.push({ shape: pick.shape, colorIndex: Math.floor(Math.random() * COLOR_COUNT) });
+    }
+    selectedPieceIndex = null;
+    renderPieces();
+    clearGhost();
+  });
+
+  cheatClearBoardBtn.addEventListener('click', () => {
+    for (let r = 0; r < BOARD_SIZE; r++) {
+      for (let c = 0; c < BOARD_SIZE; c++) board[r][c] = 0;
+    }
+    renderBoard();
+  });
+
+  cheatFillBoardBtn.addEventListener('click', () => {
+    for (let r = 0; r < BOARD_SIZE; r++) {
+      for (let c = 0; c < BOARD_SIZE; c++) {
+        board[r][c] = (Math.floor(Math.random() * COLOR_COUNT) + 1);
+      }
+    }
+    renderBoard();
+  });
+
+  cheatAlwaysValid.addEventListener('change', () => {
+    alwaysValidPlacement = cheatAlwaysValid.checked;
+  });
+
+  cheatNoGameOver.addEventListener('change', () => {
+    disableGameOver = cheatNoGameOver.checked;
+  });
+
+  // Custom block builder
+  function initCustomGrid() {
+    customGridEl.innerHTML = '';
+    for (let r = 0; r < 4; r++) {
+      for (let c = 0; c < 4; c++) {
+        const cell = document.createElement('div');
+        cell.className = 'custom-cell';
+        cell.dataset.row = r;
+        cell.dataset.col = c;
+        cell.addEventListener('click', () => {
+          cell.classList.toggle('active');
+        });
+        customGridEl.appendChild(cell);
+      }
+    }
+  }
+
+  function normalizeShape(shape) {
+    const rs = shape.map(p => p[0]);
+    const cs = shape.map(p => p[1]);
+    const minR = Math.min(...rs);
+    const minC = Math.min(...cs);
+    return shape
+      .map(([r, c]) => [r - minR, c - minC])
+      .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  }
+
+  addCustomBlockBtn.addEventListener('click', () => {
+    const active = [];
+    const cells = customGridEl.querySelectorAll('.custom-cell');
+    cells.forEach(cell => {
+      if (cell.classList.contains('active')) {
+        const r = parseInt(cell.dataset.row, 10);
+        const c = parseInt(cell.dataset.col, 10);
+        active.push([r, c]);
+      }
+    });
+    if (active.length === 0) return;
+    const norm = normalizeShape(active);
+    PIECE_SHAPES.push(norm);
+    cells.forEach(cell => cell.classList.remove('active'));
+    alert(\`Custom block added as shape ID \${PIECE_SHAPES.length - 1}\`);
+  });
+
+  // Settings modal
+  settingsBtn.addEventListener('click', () => {
+    settingsModalBackdrop.classList.add('open');
+  });
+
+  settingsCloseBtn.addEventListener('click', () => {
+    settingsModalBackdrop.classList.remove('open');
+  });
+
+  settingsModalBackdrop.addEventListener('click', (e) => {
+    if (e.target === settingsModalBackdrop) settingsModalBackdrop.classList.remove('open');
+  });
+
+  // Unlock modal
+  unlockFeaturesBtn.addEventListener('click', () => {
+    unlockPasswordInput.value = '';
+    unlockPinInput.value = '';
+    unlockErrorEl.textContent = '';
+    unlockModalBackdrop.classList.add('open');
+  });
+
+  unlockCancelBtn.addEventListener('click', () => {
+    unlockModalBackdrop.classList.remove('open');
+  });
+
+  unlockModalBackdrop.addEventListener('click', (e) => {
+    if (e.target === unlockModalBackdrop) unlockModalBackdrop.classList.remove('open');
+  });
+
+  unlockConfirmBtn.addEventListener('click', () => {
+    const pw = unlockPasswordInput.value;
+    const pin = unlockPinInput.value;
+    if (pw === UNLOCK_PASSWORD && pin === UNLOCK_PIN) {
+      unlockModalBackdrop.classList.remove('open');
+      openCheatPanel();
+    } else {
+      unlockErrorEl.textContent = 'Incorrect password or PIN.';
+    }
+  });
+
+  // Music & volume
+  function applyVolume() {
+    const vol = parseInt(volumeSlider.value, 10) / 100;
+    bgMusic.volume = vol;
+  }
+  volumeSlider.addEventListener('input', applyVolume);
+
+  musicToggle.addEventListener('change', () => {
+    if (musicToggle.checked) {
+      try { bgMusic.play(); } catch (e) {}
+    } else {
+      bgMusic.pause();
+    }
+  });
+
+  // Block reference page
+  function rotate90(shape) {
+    const norm = normalizeShape(shape);
+    const rotated = norm.map(([r, c]) => [c, -r]);
+    return normalizeShape(rotated);
+  }
+
+  function getUniqueOrientations(shape) {
+    const seen = new Set();
+    let current = normalizeShape(shape);
+    const result = [];
+    for (let i = 0; i < 4; i++) {
+      const key = JSON.stringify(current);
+      if (!seen.has(key)) {
+        seen.add(key);
+        result.push(current);
+      }
+      current = rotate90(current);
+    }
+    return result;
+  }
+
+  function openBlockReferencePage() {
+    const win = window.open('', '_blank');
+    if (!win) return;
+    const doc = win.document;
+    doc.open();
+    doc.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>BlockBlast+ Shape Reference</title>');
+    doc.write('<style>');
+    doc.write('body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#fff;color:#000;margin:16px;}');
+    doc.write('h1{margin-bottom:4px;} h2{margin-top:16px;}');
+    doc.write('.shape-grid{display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;}');
+    doc.write('.shape-card{border:1px solid #ccc;border-radius:8px;padding:8px;min-width:120px;}');
+    doc.write('.shape-id{font-weight:bold;margin-bottom:4px;font-size:13px;}');
+    doc.write('.orientations{display:flex;flex-wrap:wrap;gap:6px;}');
+    doc.write('.orient{display:inline-grid;gap:2px;background:#f5f5f5;padding:4px;border-radius:4px;}');
+    doc.write('.cell{width:10px;height:10px;border-radius:2px;background:#ffcc33;}');
+    doc.write('</style></head><body>');
+    doc.write('<h1>BlockBlast+ Shape Reference</h1>');
+    doc.write('<p>Each shape ID corresponds to an entry in the internal shape list. All orientations shown share the same ID.</p>');
+    doc.write('<div class="shape-grid">');
+
+    PIECE_SHAPES.forEach((shape, id) => {
+      const orientations = getUniqueOrientations(shape);
+      doc.write('<div class="shape-card">');
+      doc.write('<div class="shape-id">Shape ID ' + id + '</div>');
+      doc.write('<div class="orientations">');
+      orientations.forEach(orient => {
+        const rows = orient.map(p => p[0]);
+        const cols = orient.map(p => p[1]);
+        const height = Math.max(...rows) + 1;
+        const width = Math.max(...cols) + 1;
+        doc.write('<div class="orient" style="grid-template-rows:repeat(' + height + ',10px);grid-template-columns:repeat(' + width + ',10px);">');
+        const grid = Array.from({ length: height }, () =>
+          Array.from({ length: width }, () => 0)
+        );
+        orient.forEach(([r, c]) => { grid[r][c] = 1; });
+        for (let r = 0; r < height; r++) {
+          for (let c = 0; c < width; c++) {
+            if (grid[r][c] === 1) doc.write('<div class="cell"></div>');
+            else doc.write('<div style="width:10px;height:10px;"></div>');
+          }
+        }
+        doc.write('</div>');
+      });
+      doc.write('</div></div>');
+    });
+
+    doc.write('</div>');
+    doc.write('<p style="margin-top:16px;font-size:12px;">Tip: Use your browser\\\'s Print → "Save as PDF" to export this reference.</p>');
+    doc.write('</body></html>');
+    doc.close();
+  }
+
+  openReferenceBtn.addEventListener('click', openBlockReferencePage);
+
+  // PWA service worker registration
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('service-worker.js').catch(() => {});
+    });
+  }
+
+  // Start game
+  loadHighScore();
+  initBoard();
+  generatePieces();
+  initCustomGrid();
+  applyVolume();
+</script>
+</body>
+</html>
